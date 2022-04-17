@@ -1,0 +1,1962 @@
+# 실습 과제
+
+**참고**
+
+[(구글코랩) 분류](https://colab.research.google.com/github/codingalzi/handson-ml3/blob/master/notebooks/code_classification.ipynb)
+의 소스코드를 먼저 공부하세요.
+
+## 과제 1
+
+타이타닉 데이터 분석 경진대회에 도전하는 과제입니다.
+
+연습문제 3번에 해당하는 문제라서 주피터 노트북에 해답이 있기는 합니다.
+그런데 여러분이 해야 할일은 아래 링크에 들어가서 성적을 받아오는 겁니다.
+
+[Titanic - Machine Learning from Disaster | Kaggle](https://www.kaggle.com/c/titanic)
+
+- 제출 내용: 캐글 타이타닉 경진대회(competition)에 참가해서 작성한 캐글 주피터 노트북 주소 및 등수 사진 캡처
+
+- 참고 자료: 구글 검색에서 "캐글 타이타닉 competition" 으로 검색하면 많은 블로그의 글이 검색됨.
+    그중 아래 두 개 사이트가 읽을만함.
+
+    - [Kaggle과 Titanic research로 시작하는 데이터 분석 - Ascent Dev Blog (ascentnet.co.jp)](https://developers.ascentnet.co.jp/2017/11/24/kaggle-process-review/)    
+    - [캐글 타이타닉 생존자 예측 도전기 (1) - Cyc1am3n's Blog](https://cyc1am3n.github.io/2018/10/09/my-first-kaggle-competition_titanic.html)
+
+---
+
+- 최종 캐글 주피터 노트북 주소 : https://www.kaggle.com/kimkyeonghun/titanic-kkh1
+
+
+## 과제 2
+
+[(구글코랩) 분류](https://colab.research.google.com/github/codingalzi/handson-ml3/blob/master/notebooks/code_classification.ipynb) 의 
+맨 아래에 있는 연습문제 1번부터 4번까지를 따라하면서 내용을 정리하라.
+
+### 기본 설정
+
+
+```python
+import matplotlib.pyplot as plt
+import sys
+import sklearn
+import numpy as np
+
+
+plt.rc('font', size=14)
+plt.rc('axes', labelsize=14, titlesize=14)
+plt.rc('legend', fontsize=14)
+plt.rc('xtick', labelsize=10)
+plt.rc('ytick', labelsize=10)
+```
+
+
+```python
+from sklearn.datasets import fetch_openml # 다운로드 및 적재
+
+mnist = fetch_openml('mnist_784', as_frame=False)
+```
+
+
+```python
+X, y = mnist.data, mnist.target # 입력 데이터 셋과 타깃 데이터 셋
+
+X_train, X_test, y_train, y_test = X[:60000], X[60000:], y[:60000], y[60000:] # 훈련 셋과 데이터 셋 나누기
+```
+
+### 1. An MNIST Classifier with Over 97% Accuracy 
+(97% 이상의 정확도를 가진 MNIST 분류기)
+
+
+
+테스트셋에서 **97% 이상의 정확도**를 달성하는 `MNIST 데이터 세트에 대한 분류기`를 구축하는 연습을 한다.
+
+`KNeighborsClassifier`가 이 작업에 적합하다.
+
+적절한 **하이퍼파라미터 값**을 찾아 *가중치 및 n_neighbors 하이퍼 파라미터에 대한 그리드 탐색을 시도*한다.
+
+
+```python
+# 간단한 K-Nearest Neighbors 분류기로 시작하여 테스트셋에서 성능을 측정
+from sklearn.neighbors import KNeighborsClassifier
+knn_clf = KNeighborsClassifier()
+knn_clf.fit(X_train, y_train)
+baseline_accuracy = knn_clf.score(X_test, y_test)
+baseline_accuracy
+```
+
+
+
+
+    0.9688
+
+
+
+기본 하이퍼파라미터를 가진 **일반 KNN 분류기**는 이미 우리의 목표에 매우 근접하다.
+
+**하이퍼파라미터를 조정**하여 도움이 되는지 연습한다. 
+
+**검색 속도를 높이기**위해 첫 번째의 10,000개의 이미지만 학습한다.
+
+
+
+```python
+from sklearn.model_selection import GridSearchCV
+
+param_grid = [{'weights': ["uniform", "distance"], 'n_neighbors': [3, 4, 5, 6]}]
+
+knn_clf = KNeighborsClassifier()
+grid_search = GridSearchCV(knn_clf, param_grid, cv=5)
+grid_search.fit(X_train[:10_000], y_train[:10_000])
+```
+
+
+
+
+    GridSearchCV(cv=5, estimator=KNeighborsClassifier(),
+                 param_grid=[{'n_neighbors': [3, 4, 5, 6],
+                              'weights': ['uniform', 'distance']}])
+
+
+
+
+```python
+grid_search.best_params_
+```
+
+
+
+
+    {'n_neighbors': 4, 'weights': 'distance'}
+
+
+
+
+```python
+grid_search.best_score_
+```
+
+
+
+
+    0.9441999999999998
+
+
+
+*점수가 떨어졌지만*, 10,000개의 이미지로만 훈련했기 때문에 예상할 수 있는 일이다. 
+
+이제 **최상의 모델**을 **전체 교육 세트**에서 다시 훈련해본다.
+
+
+```python
+grid_search.best_estimator_.fit(X_train, y_train)
+tuned_accuracy = grid_search.score(X_test, y_test)
+tuned_accuracy # 목표 97%의 정확도에 도달했음을 확인 가능
+```
+
+
+
+
+    0.9714
+
+
+
+### 2. Data Augmentation
+(데이터 증가)
+
+
+모든 방향으로 `MINIST 이미지`를 한 픽셀씩 **이동할 수 있는 기능**을 작성하는 훈련을 한다.
+
+`scipy.ndimage.interpolation 모듈`로부터 `shift() 함수`를 사용할 수 있다.
+
+`shift(image, [2, 1], cval=0)`은 그 이미지를 *아래로 2픽셀로 이동하고 오른쪽으로 1픽셀 이동*한다.
+
+그런 다음 훈렷 셋의 각 이미지에 대해 이동된 **복사본 4개를 생성하여 훈련셋에 추가**한다.
+
+마지막으로, 이 확장된 훈렷 셋에서 최상의 모델을 교육하고 테스트셋에서 정확성을 측정한다.
+
+모델의 성능이 훨씬 우수하다는 것을 관찰할 수 있다.
+
+훈련세트를 인위적으로 확장하는 기술을 `_data augmentation or training set expansion._`이라고 한다.
+
+
+
+```python
+# 각 이미지의 약간 이동된 버전을 추가하여 `MNIST 데이터 셋`을 확장하는 연습
+from scipy.ndimage.interpolation import shift
+```
+
+
+```python
+def shift_image(image, dx, dy):
+    image = image.reshape((28, 28))
+    shifted_image = shift(image, [dy, dx], cval=0, mode="constant")
+    return shifted_image.reshape([-1])
+```
+
+
+```python
+image = X_train[1000]  # demo 하기 위한 임의의 숫자
+shifted_image_down = shift_image(image, 0, 5)
+shifted_image_left = shift_image(image, -5, 0)
+
+plt.figure(figsize=(12, 3))
+plt.subplot(131)
+plt.title("Original")
+plt.imshow(image.reshape(28, 28), interpolation="nearest", cmap="Greys")
+plt.subplot(132)
+plt.title("Shifted down")
+plt.imshow(shifted_image_down.reshape(28, 28), interpolation="nearest", cmap="Greys")
+plt.subplot(133)
+plt.title("Shifted left")
+plt.imshow(shifted_image_left.reshape(28, 28), interpolation="nearest", cmap="Greys")
+plt.show()
+```
+
+
+    
+![png](output_25_0.png)
+    
+
+
+
+```python
+# 모든 이미지를 왼쪽, 오른쪽, 위아래로 한 픽셀씩 이동하여 증강된 교육 세트를 만들기
+X_train_augmented = [image for image in X_train]
+y_train_augmented = [label for label in y_train]
+
+for dx, dy in ((-1, 0), (1, 0), (0, 1), (0, -1)):
+    for image, label in zip(X_train, y_train):
+        X_train_augmented.append(shift_image(image, dx, dy))
+        y_train_augmented.append(label)
+
+X_train_augmented = np.array(X_train_augmented)
+y_train_augmented = np.array(y_train_augmented)
+```
+
+
+```python
+# 증강된 교육 세트를 섞고, 그렇지 않으면 이동된 모든 이미지가 함께 그룹화
+shuffle_idx = np.random.permutation(len(X_train_augmented))
+X_train_augmented = X_train_augmented[shuffle_idx]
+y_train_augmented = y_train_augmented[shuffle_idx]
+```
+
+
+```python
+# 이전 연습에서 찾은 최고의 하이퍼파라미터를 사용하여 모델을 교육
+knn_clf = KNeighborsClassifier(**grid_search.best_params_)
+```
+
+
+```python
+knn_clf.fit(X_train_augmented, y_train_augmented)
+```
+
+
+
+
+    KNeighborsClassifier(n_neighbors=4, weights='distance')
+
+
+
+
+```python
+augmented_accuracy = knn_clf.score(X_test, y_test)
+```
+
+데이터를 단순히 **증가**시킴으로써 `0.5%의 정확도를 향상`시켰다.
+
+이는 실제로 **오류율이 크게 떨어졌다는 것**을 의미한다.
+
+
+```python
+error_rate_change = (1 - augmented_accuracy) / (1 - tuned_accuracy) - 1
+print(f"error_rate_change = {error_rate_change:.0%}")
+# 데이터 증가 덕분에 오류율이 상당히 떨어졌음을 확인 가능
+```
+
+    error_rate_change = -17%
+    
+
+### 3. Tackle the Titanic datset
+(타이타닉 데이터셋 문제 해결)
+
+
+**Titanic 세트를 다루는** 연습을 한다.
+
+Kaggle로 시작하거나 https://homl.info/titanic.tgz 에서 데이터를 다운로드하고 2장의 주택 데이터에 대해 했던 것처럼 압축을 풀 수 있다.
+
+이 연습을 통해 **다른 열의 기반**으로 `생존 열을 예측할 수 있는 분류기를 훈련`할 것이다.
+
+
+
+```python
+from pathlib import Path
+import pandas as pd
+import tarfile
+import urllib.request
+
+def load_titanic_data():
+    tarball_path = Path("datasets/titanic.tgz")
+    if not tarball_path.is_file():
+        Path("datasets").mkdir(parents=True, exist_ok=True)
+        url = "https://github.com/ageron/data/raw/main/titanic.tgz"
+        urllib.request.urlretrieve(url, tarball_path)
+        with tarfile.open(tarball_path) as titanic_tarball:
+            titanic_tarball.extractall(path="datasets")
+    return [pd.read_csv(Path("datasets/titanic") / filename)
+            for filename in ("train.csv", "test.csv")]
+```
+
+
+```python
+train_data, test_data = load_titanic_data()
+```
+
+데이터는 이미 **교육 세트**와 **테스트 세트**로 분할되어 있지만, *테스트 데이터에는 레이블이 포함되어 있지 않다*.
+
+목표는 **교육 데이터를 사용**하여 `최상의 모델을 학습`한 다음 **테스트 데이터에 대한 예측**을 하고 **최종 점수를 확인하기 위해 캐글에 업로드**하는 것이다.
+
+
+```python
+# 교육 세트 확인
+train_data.head()
+```
+
+
+
+
+
+  <div id="df-b9cd6936-4c52-4d51-9a70-591ab84efa4e">
+    <div class="colab-df-container">
+      <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>PassengerId</th>
+      <th>Survived</th>
+      <th>Pclass</th>
+      <th>Name</th>
+      <th>Sex</th>
+      <th>Age</th>
+      <th>SibSp</th>
+      <th>Parch</th>
+      <th>Ticket</th>
+      <th>Fare</th>
+      <th>Cabin</th>
+      <th>Embarked</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>1</td>
+      <td>0</td>
+      <td>3</td>
+      <td>Braund, Mr. Owen Harris</td>
+      <td>male</td>
+      <td>22.0</td>
+      <td>1</td>
+      <td>0</td>
+      <td>A/5 21171</td>
+      <td>7.2500</td>
+      <td>NaN</td>
+      <td>S</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>Cumings, Mrs. John Bradley (Florence Briggs Th...</td>
+      <td>female</td>
+      <td>38.0</td>
+      <td>1</td>
+      <td>0</td>
+      <td>PC 17599</td>
+      <td>71.2833</td>
+      <td>C85</td>
+      <td>C</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>3</td>
+      <td>1</td>
+      <td>3</td>
+      <td>Heikkinen, Miss. Laina</td>
+      <td>female</td>
+      <td>26.0</td>
+      <td>0</td>
+      <td>0</td>
+      <td>STON/O2. 3101282</td>
+      <td>7.9250</td>
+      <td>NaN</td>
+      <td>S</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>4</td>
+      <td>1</td>
+      <td>1</td>
+      <td>Futrelle, Mrs. Jacques Heath (Lily May Peel)</td>
+      <td>female</td>
+      <td>35.0</td>
+      <td>1</td>
+      <td>0</td>
+      <td>113803</td>
+      <td>53.1000</td>
+      <td>C123</td>
+      <td>S</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>5</td>
+      <td>0</td>
+      <td>3</td>
+      <td>Allen, Mr. William Henry</td>
+      <td>male</td>
+      <td>35.0</td>
+      <td>0</td>
+      <td>0</td>
+      <td>373450</td>
+      <td>8.0500</td>
+      <td>NaN</td>
+      <td>S</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+      <button class="colab-df-convert" onclick="convertToInteractive('df-b9cd6936-4c52-4d51-9a70-591ab84efa4e')"
+              title="Convert this dataframe to an interactive table."
+              style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px"viewBox="0 0 24 24"
+       width="24px">
+    <path d="M0 0h24v24H0V0z" fill="none"/>
+    <path d="M18.56 5.44l.94 2.06.94-2.06 2.06-.94-2.06-.94-.94-2.06-.94 2.06-2.06.94zm-11 1L8.5 8.5l.94-2.06 2.06-.94-2.06-.94L8.5 2.5l-.94 2.06-2.06.94zm10 10l.94 2.06.94-2.06 2.06-.94-2.06-.94-.94-2.06-.94 2.06-2.06.94z"/><path d="M17.41 7.96l-1.37-1.37c-.4-.4-.92-.59-1.43-.59-.52 0-1.04.2-1.43.59L10.3 9.45l-7.72 7.72c-.78.78-.78 2.05 0 2.83L4 21.41c.39.39.9.59 1.41.59.51 0 1.02-.2 1.41-.59l7.78-7.78 2.81-2.81c.8-.78.8-2.07 0-2.86zM5.41 20L4 18.59l7.72-7.72 1.47 1.35L5.41 20z"/>
+  </svg>
+      </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      flex-wrap:wrap;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+      <script>
+        const buttonEl =
+          document.querySelector('#df-b9cd6936-4c52-4d51-9a70-591ab84efa4e button.colab-df-convert');
+        buttonEl.style.display =
+          google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+        async function convertToInteractive(key) {
+          const element = document.querySelector('#df-b9cd6936-4c52-4d51-9a70-591ab84efa4e');
+          const dataTable =
+            await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                     [key], {});
+          if (!dataTable) return;
+
+          const docLinkHtml = 'Like what you see? Visit the ' +
+            '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+            + ' to learn more about interactive tables.';
+          element.innerHTML = '';
+          dataTable['output_type'] = 'display_data';
+          await google.colab.output.renderOutput(dataTable, element);
+          const docLink = document.createElement('div');
+          docLink.innerHTML = docLinkHtml;
+          element.appendChild(docLink);
+        }
+      </script>
+    </div>
+  </div>
+
+
+
+
+- `PassengerID` : 각 승객에 대한 고유 식별자
+- `Survived` : 목표값으로, 0은 승객이 생존하지 않았다는 의미이고 1은 생존했다는 의미
+- `Pclass` : 승객 클래스
+- `Name, Sex, Age` : 자기 설명
+- `SibSp` : 타이타닉에 탑승한 승객의 형제자매와 배우자 수는 얼마나 되는지
+- `Parch` : 타이타닉에 탑승한 승객의 자녀와 부모 수
+- `Ticket` : 티켓 ID
+- `Fare` : 지불된 가격(파운드)
+- `Cabin` : 승객 객실 번호
+- `Embarked` : 승객이 타이타닉에 탑승한 곳
+
+
+```python
+# 승객의 나이, 성별, 탑승 장소 등 속성으로 생존 여부를 예측하는 것이 목표
+# PassengerId 열을 인덱스 열로 명시적으로 설정
+train_data = train_data.set_index("PassengerId")
+test_data = test_data.set_index("PassengerId")
+```
+
+
+```python
+# 누락된 데이터 확인
+train_data.info()
+```
+
+    <class 'pandas.core.frame.DataFrame'>
+    Int64Index: 891 entries, 1 to 891
+    Data columns (total 11 columns):
+     #   Column    Non-Null Count  Dtype  
+    ---  ------    --------------  -----  
+     0   Survived  891 non-null    int64  
+     1   Pclass    891 non-null    int64  
+     2   Name      891 non-null    object 
+     3   Sex       891 non-null    object 
+     4   Age       714 non-null    float64
+     5   SibSp     891 non-null    int64  
+     6   Parch     891 non-null    int64  
+     7   Ticket    891 non-null    object 
+     8   Fare      891 non-null    float64
+     9   Cabin     204 non-null    object 
+     10  Embarked  889 non-null    object 
+    dtypes: float64(2), int64(4), object(5)
+    memory usage: 83.5+ KB
+    
+
+
+```python
+train_data[train_data["Sex"]=="female"]["Age"].median()
+```
+
+
+
+
+    27.0
+
+
+
+`Age`, `Cabin` 및 `Stainted` 속성은 때때로 null이며, 특히 Cabin(77%)은 null이다.
+
+ 일단 `Cabin`은 무시하고 `Age` 속성은 약 19%의 null 값을 가지므로 이 값을 사용하여 수행할 작업을 결정해야 한다. 
+ 
+ `null 값`을 **중위수 연령으로 바꾸는 것**이 합리적인 것 같다.
+
+`Name`과 `Ticket` 속성은 **일부 값**을 가질 수 있지만 *모델이 사용할 수 있는 유용한 숫자로 변환하는 것은 조금 어렵다*. 
+
+그래서 일단은, 그들을 무시할것이다.
+
+
+```python
+# 수치 속성 확인
+train_data.describe()
+```
+
+
+
+
+
+  <div id="df-1ddf7a4c-b01d-4943-87d6-2a69f7c510c2">
+    <div class="colab-df-container">
+      <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Survived</th>
+      <th>Pclass</th>
+      <th>Age</th>
+      <th>SibSp</th>
+      <th>Parch</th>
+      <th>Fare</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>count</th>
+      <td>891.000000</td>
+      <td>891.000000</td>
+      <td>714.000000</td>
+      <td>891.000000</td>
+      <td>891.000000</td>
+      <td>891.000000</td>
+    </tr>
+    <tr>
+      <th>mean</th>
+      <td>0.383838</td>
+      <td>2.308642</td>
+      <td>29.699113</td>
+      <td>0.523008</td>
+      <td>0.381594</td>
+      <td>32.204208</td>
+    </tr>
+    <tr>
+      <th>std</th>
+      <td>0.486592</td>
+      <td>0.836071</td>
+      <td>14.526507</td>
+      <td>1.102743</td>
+      <td>0.806057</td>
+      <td>49.693429</td>
+    </tr>
+    <tr>
+      <th>min</th>
+      <td>0.000000</td>
+      <td>1.000000</td>
+      <td>0.416700</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>25%</th>
+      <td>0.000000</td>
+      <td>2.000000</td>
+      <td>20.125000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>7.910400</td>
+    </tr>
+    <tr>
+      <th>50%</th>
+      <td>0.000000</td>
+      <td>3.000000</td>
+      <td>28.000000</td>
+      <td>0.000000</td>
+      <td>0.000000</td>
+      <td>14.454200</td>
+    </tr>
+    <tr>
+      <th>75%</th>
+      <td>1.000000</td>
+      <td>3.000000</td>
+      <td>38.000000</td>
+      <td>1.000000</td>
+      <td>0.000000</td>
+      <td>31.000000</td>
+    </tr>
+    <tr>
+      <th>max</th>
+      <td>1.000000</td>
+      <td>3.000000</td>
+      <td>80.000000</td>
+      <td>8.000000</td>
+      <td>6.000000</td>
+      <td>512.329200</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+      <button class="colab-df-convert" onclick="convertToInteractive('df-1ddf7a4c-b01d-4943-87d6-2a69f7c510c2')"
+              title="Convert this dataframe to an interactive table."
+              style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px"viewBox="0 0 24 24"
+       width="24px">
+    <path d="M0 0h24v24H0V0z" fill="none"/>
+    <path d="M18.56 5.44l.94 2.06.94-2.06 2.06-.94-2.06-.94-.94-2.06-.94 2.06-2.06.94zm-11 1L8.5 8.5l.94-2.06 2.06-.94-2.06-.94L8.5 2.5l-.94 2.06-2.06.94zm10 10l.94 2.06.94-2.06 2.06-.94-2.06-.94-.94-2.06-.94 2.06-2.06.94z"/><path d="M17.41 7.96l-1.37-1.37c-.4-.4-.92-.59-1.43-.59-.52 0-1.04.2-1.43.59L10.3 9.45l-7.72 7.72c-.78.78-.78 2.05 0 2.83L4 21.41c.39.39.9.59 1.41.59.51 0 1.02-.2 1.41-.59l7.78-7.78 2.81-2.81c.8-.78.8-2.07 0-2.86zM5.41 20L4 18.59l7.72-7.72 1.47 1.35L5.41 20z"/>
+  </svg>
+      </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      flex-wrap:wrap;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+      <script>
+        const buttonEl =
+          document.querySelector('#df-1ddf7a4c-b01d-4943-87d6-2a69f7c510c2 button.colab-df-convert');
+        buttonEl.style.display =
+          google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+        async function convertToInteractive(key) {
+          const element = document.querySelector('#df-1ddf7a4c-b01d-4943-87d6-2a69f7c510c2');
+          const dataTable =
+            await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                     [key], {});
+          if (!dataTable) return;
+
+          const docLinkHtml = 'Like what you see? Visit the ' +
+            '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+            + ' to learn more about interactive tables.';
+          element.innerHTML = '';
+          dataTable['output_type'] = 'display_data';
+          await google.colab.output.renderOutput(dataTable, element);
+          const docLink = document.createElement('div');
+          docLink.innerHTML = docLinkHtml;
+          element.appendChild(docLink);
+        }
+      </script>
+    </div>
+  </div>
+
+
+
+
+38%로, 40%에 가까운 수치이기 때문에 정확도는 우리 모델을 평가하는 데 합리적인 척도가 될 것이다.
+
+
+평균 요금은 £32.20으로 그렇게 비싸 보이지 않고
+평균 연령은 30세 미만이다.
+
+
+```python
+# 목표값이 0 or 1인지 확인
+train_data["Survived"].value_counts()
+```
+
+
+
+
+    0    549
+    1    342
+    Name: Survived, dtype: int64
+
+
+
+
+```python
+# 모든 범주적 속성을 확인
+train_data["Pclass"].value_counts()
+```
+
+
+
+
+    3    491
+    1    216
+    2    184
+    Name: Pclass, dtype: int64
+
+
+
+
+```python
+train_data["Sex"].value_counts()
+```
+
+
+
+
+    male      577
+    female    314
+    Name: Sex, dtype: int64
+
+
+
+
+```python
+train_data["Embarked"].value_counts()
+```
+
+
+
+
+    S    644
+    C    168
+    Q     77
+    Name: Embarked, dtype: int64
+
+
+
+`Embarked 특성`은 **승객이 탑승한 위치**를 알려준다. (C = Cherbourg, Q = Queenstown, S = Southampton)
+
+
+```python
+# 수치 속성을 위한 파이프라인부터 시작하여 전처리 파이프라인을 구축
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+
+num_pipeline = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler())
+    ])
+```
+
+
+```python
+# 범주 속성을 위한 파이프라인을 구축
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder
+```
+
+
+```python
+cat_pipeline = Pipeline([
+        ("ordinal_encoder", OrdinalEncoder()),    
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("cat_encoder", OneHotEncoder(sparse=False)),
+    ])
+```
+
+
+```python
+# 수치 및 범주형 파이프라인
+from sklearn.compose import ColumnTransformer
+
+num_attribs = ["Age", "SibSp", "Parch", "Fare"]
+cat_attribs = ["Pclass", "Sex", "Embarked"]
+
+preprocess_pipeline = ColumnTransformer([
+        ("num", num_pipeline, num_attribs),
+        ("cat", cat_pipeline, cat_attribs),
+    ])
+```
+
+원시 데이터를 가져와서 원하는 *머신 러닝 모델에 제공할 수 있는 수치 입력 기능을 출력*하는 **전처리 파이프라인**이 생성되었다.
+
+
+```python
+X_train = preprocess_pipeline.fit_transform(train_data)
+X_train
+```
+
+
+
+
+    array([[-0.56573582,  0.43279337, -0.47367361, ...,  0.        ,
+             0.        ,  1.        ],
+           [ 0.6638609 ,  0.43279337, -0.47367361, ...,  1.        ,
+             0.        ,  0.        ],
+           [-0.25833664, -0.4745452 , -0.47367361, ...,  0.        ,
+             0.        ,  1.        ],
+           ...,
+           [-0.10463705,  0.43279337,  2.00893337, ...,  0.        ,
+             0.        ,  1.        ],
+           [-0.25833664, -0.4745452 , -0.47367361, ...,  1.        ,
+             0.        ,  0.        ],
+           [ 0.20276213, -0.4745452 , -0.47367361, ...,  0.        ,
+             1.        ,  0.        ]])
+
+
+
+
+```python
+y_train = train_data["Survived"]
+```
+
+
+```python
+# RandomForestClassifer로 훈련
+from sklearn.ensemble import RandomForestClassifier
+forest_clf = RandomForestClassifier(n_estimators=100, random_state=42)
+forest_clf.fit(X_train, y_train)
+```
+
+
+
+
+    RandomForestClassifier(random_state=42)
+
+
+
+
+```python
+# 교육받은 모델로 테스트 셋에 대한 예측
+X_test = preprocess_pipeline.transform(test_data)
+y_pred = forest_clf.predict(X_test)
+```
+
+이러한 예측으로 CSV 파일을 만든 다음 업로드하고 최상의 결과를 기대할 수 있다. 
+
+**교차 검증**을 통해 `모델의 성능을 확인`해보는 방법은 다음과 같다.
+
+
+```python
+from sklearn.model_selection import cross_val_score
+forest_scores = cross_val_score(forest_clf, X_train, y_train, cv=10)
+forest_scores.mean()
+```
+
+
+
+
+    0.8137578027465668
+
+
+
+Kaggle에서 열리는 타이타닉 대회의 leaderboard를 보면, *우리의 점수가 상위 2% 안에 든다는 것*을 알 수 있다.
+
+ 일부 카글러들은 100% 정확도에 도달했지만, 타이타닉의 희생자들의 목록을 쉽게 찾을 수 있기 때문에, 그들의 공연에는 기계 학습이 거의 개입되지 않았을 것 같다.
+
+
+```python
+# SVC로 시도
+from sklearn.svm import SVC
+
+svm_clf = SVC(gamma="auto")
+svm_scores = cross_val_score(svm_clf, X_train, y_train, cv=10)
+svm_scores.mean()
+```
+
+
+
+
+    0.8249313358302123
+
+
+
+교차 검증을 통한 10개의 평균 정확도만 보는 것이 아니라, 각 모델에 대한 10개의 점수를 모두 표시하고, 하위 사분위와 상위 사분위를 강조하는 상자 그림과 점수의 범위를 보여주는 "whiskers"을 표시해보면 다음과 같다.
+
+
+`boxplot() 함수`는 **특이치를 탐지**하고 whiskers에 포함하지 않는다. 
+특히, **하위 사분위**가 `Q1`이고 **상위 사분위**가 `Q3`이면 사분위간 범위 `IQR=Q3-Q1`(상자 높이)와 `Q1−1.5×IQR` 보다 낮은 점수는 **flier**이며,  `Q3+1.5×IQR`보다 큰 점수도 마찬가지다.
+
+
+
+
+```python
+plt.figure(figsize=(8, 4))
+plt.plot([1]*10, svm_scores, ".")
+plt.plot([2]*10, forest_scores, ".")
+plt.boxplot([svm_scores, forest_scores], labels=("SVM", "Random Forest"))
+plt.ylabel("Accuracy")
+plt.show()
+```
+
+
+    
+![png](output_66_0.png)
+    
+
+
+랜덤 포레스트 분류기는 10개 접기 중 하나에서 매우 높은 점수를 받았지만, **전반적으로 평균 점수가 낮을 뿐 아니라 spread도 커서** `SVM 분류기`가 일반화될 가능성이 더 높아보인다.
+
+**결과를 개선하기 위한 방법은 다음과 같다.**
+
+- **교차 검증** 및 **그리드 검색**을 사용하여 *더 많은 모델을 비교*하고 *하이퍼파라미터를 조정*한다.
+- 다음과 같이 `feature engineering`을 추가로 수행한다.
+    - `수치 속성`을 `범주형 속성`으로 **변환**한다. 
+    - 생존 속성과 잘 연관되는 **이름 부분을 식별하기 위해서** `SibSp`와 `Parch`를 `합`으로 **대체**한다.
+    - `캐빈 열`을 사용한다.
+
+
+```python
+train_data["AgeBucket"] = train_data["Age"] // 15 * 15
+train_data[["AgeBucket", "Survived"]].groupby(['AgeBucket']).mean()
+```
+
+
+
+
+
+  <div id="df-66c6b5c8-770a-4663-be39-097cc14ccb52">
+    <div class="colab-df-container">
+      <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Survived</th>
+    </tr>
+    <tr>
+      <th>AgeBucket</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0.0</th>
+      <td>0.576923</td>
+    </tr>
+    <tr>
+      <th>15.0</th>
+      <td>0.362745</td>
+    </tr>
+    <tr>
+      <th>30.0</th>
+      <td>0.423256</td>
+    </tr>
+    <tr>
+      <th>45.0</th>
+      <td>0.404494</td>
+    </tr>
+    <tr>
+      <th>60.0</th>
+      <td>0.240000</td>
+    </tr>
+    <tr>
+      <th>75.0</th>
+      <td>1.000000</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+      <button class="colab-df-convert" onclick="convertToInteractive('df-66c6b5c8-770a-4663-be39-097cc14ccb52')"
+              title="Convert this dataframe to an interactive table."
+              style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px"viewBox="0 0 24 24"
+       width="24px">
+    <path d="M0 0h24v24H0V0z" fill="none"/>
+    <path d="M18.56 5.44l.94 2.06.94-2.06 2.06-.94-2.06-.94-.94-2.06-.94 2.06-2.06.94zm-11 1L8.5 8.5l.94-2.06 2.06-.94-2.06-.94L8.5 2.5l-.94 2.06-2.06.94zm10 10l.94 2.06.94-2.06 2.06-.94-2.06-.94-.94-2.06-.94 2.06-2.06.94z"/><path d="M17.41 7.96l-1.37-1.37c-.4-.4-.92-.59-1.43-.59-.52 0-1.04.2-1.43.59L10.3 9.45l-7.72 7.72c-.78.78-.78 2.05 0 2.83L4 21.41c.39.39.9.59 1.41.59.51 0 1.02-.2 1.41-.59l7.78-7.78 2.81-2.81c.8-.78.8-2.07 0-2.86zM5.41 20L4 18.59l7.72-7.72 1.47 1.35L5.41 20z"/>
+  </svg>
+      </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      flex-wrap:wrap;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+      <script>
+        const buttonEl =
+          document.querySelector('#df-66c6b5c8-770a-4663-be39-097cc14ccb52 button.colab-df-convert');
+        buttonEl.style.display =
+          google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+        async function convertToInteractive(key) {
+          const element = document.querySelector('#df-66c6b5c8-770a-4663-be39-097cc14ccb52');
+          const dataTable =
+            await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                     [key], {});
+          if (!dataTable) return;
+
+          const docLinkHtml = 'Like what you see? Visit the ' +
+            '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+            + ' to learn more about interactive tables.';
+          element.innerHTML = '';
+          dataTable['output_type'] = 'display_data';
+          await google.colab.output.renderOutput(dataTable, element);
+          const docLink = document.createElement('div');
+          docLink.innerHTML = docLinkHtml;
+          element.appendChild(docLink);
+        }
+      </script>
+    </div>
+  </div>
+
+
+
+
+
+```python
+train_data["RelativesOnboard"] = train_data["SibSp"] + train_data["Parch"]
+train_data[["RelativesOnboard", "Survived"]].groupby(['RelativesOnboard']).mean()
+```
+
+
+
+
+
+  <div id="df-7b8f5107-c7e7-4d8c-b838-cd149ba50037">
+    <div class="colab-df-container">
+      <div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Survived</th>
+    </tr>
+    <tr>
+      <th>RelativesOnboard</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>0.303538</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>0.552795</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>0.578431</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>0.724138</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>0.200000</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>0.136364</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>0.333333</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>0.000000</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+      <button class="colab-df-convert" onclick="convertToInteractive('df-7b8f5107-c7e7-4d8c-b838-cd149ba50037')"
+              title="Convert this dataframe to an interactive table."
+              style="display:none;">
+
+  <svg xmlns="http://www.w3.org/2000/svg" height="24px"viewBox="0 0 24 24"
+       width="24px">
+    <path d="M0 0h24v24H0V0z" fill="none"/>
+    <path d="M18.56 5.44l.94 2.06.94-2.06 2.06-.94-2.06-.94-.94-2.06-.94 2.06-2.06.94zm-11 1L8.5 8.5l.94-2.06 2.06-.94-2.06-.94L8.5 2.5l-.94 2.06-2.06.94zm10 10l.94 2.06.94-2.06 2.06-.94-2.06-.94-.94-2.06-.94 2.06-2.06.94z"/><path d="M17.41 7.96l-1.37-1.37c-.4-.4-.92-.59-1.43-.59-.52 0-1.04.2-1.43.59L10.3 9.45l-7.72 7.72c-.78.78-.78 2.05 0 2.83L4 21.41c.39.39.9.59 1.41.59.51 0 1.02-.2 1.41-.59l7.78-7.78 2.81-2.81c.8-.78.8-2.07 0-2.86zM5.41 20L4 18.59l7.72-7.72 1.47 1.35L5.41 20z"/>
+  </svg>
+      </button>
+
+  <style>
+    .colab-df-container {
+      display:flex;
+      flex-wrap:wrap;
+      gap: 12px;
+    }
+
+    .colab-df-convert {
+      background-color: #E8F0FE;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: none;
+      fill: #1967D2;
+      height: 32px;
+      padding: 0 0 0 0;
+      width: 32px;
+    }
+
+    .colab-df-convert:hover {
+      background-color: #E2EBFA;
+      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);
+      fill: #174EA6;
+    }
+
+    [theme=dark] .colab-df-convert {
+      background-color: #3B4455;
+      fill: #D2E3FC;
+    }
+
+    [theme=dark] .colab-df-convert:hover {
+      background-color: #434B5C;
+      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));
+      fill: #FFFFFF;
+    }
+  </style>
+
+      <script>
+        const buttonEl =
+          document.querySelector('#df-7b8f5107-c7e7-4d8c-b838-cd149ba50037 button.colab-df-convert');
+        buttonEl.style.display =
+          google.colab.kernel.accessAllowed ? 'block' : 'none';
+
+        async function convertToInteractive(key) {
+          const element = document.querySelector('#df-7b8f5107-c7e7-4d8c-b838-cd149ba50037');
+          const dataTable =
+            await google.colab.kernel.invokeFunction('convertToInteractive',
+                                                     [key], {});
+          if (!dataTable) return;
+
+          const docLinkHtml = 'Like what you see? Visit the ' +
+            '<a target="_blank" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'
+            + ' to learn more about interactive tables.';
+          element.innerHTML = '';
+          dataTable['output_type'] = 'display_data';
+          await google.colab.output.renderOutput(dataTable, element);
+          const docLink = document.createElement('div');
+          docLink.innerHTML = docLinkHtml;
+          element.appendChild(docLink);
+        }
+      </script>
+    </div>
+  </div>
+
+
+
+
+### 4. Spam classifier
+(Sapm 분류기)
+
+Spam 분류기 만드는 연습을 한다.
+
+- `Apache SpamAssessin의 공용 데이터 세트`에서 **Spam**과 **ham**의 예를 다운로드한다.
+- 데이터셋의 **압축을 풀고** 데이터 형식을 **숙지**한다.
+- **데이터 세트**를 `교육 세트`와 `테스트 세트`로 나눈다.
+- **데이터 준비 파이프라인을 작성**하여 각 전자 메일을 `기능 벡터로 변환`한다. **준비 파이프라인**은 전자 메일을 가능한 각 단어의 유무를 나타내는 `희소 벡터로 변환`해야 한다.
+
+**준비 파이프라인**에 **하이퍼 파라미터**를 추가하여 *전자 메일 헤더를 제거할지, 각 전자 메일을 소문자로 변환할지, 구두점을 제거할지, 모든 URL을 "URL"로 대체할지, 모든 숫자를 "NUMBER"로 대체할지, 또는 _stemming을 수행할지 여부*를 제어할 수 있다.
+
+마지막으로 몇 가지 **분류기**를 사용해보고 **높은 회수율**과 **높은 정밀도**로 훌륭한 스팸 분류기를 만들 수 있는지 확인해볼것이다.
+
+
+```python
+import tarfile
+
+def fetch_spam_data():
+    spam_root = "http://spamassassin.apache.org/old/publiccorpus/"
+    ham_url = spam_root + "20030228_easy_ham.tar.bz2"
+    spam_url = spam_root + "20030228_spam.tar.bz2"
+
+    spam_path = Path() / "datasets" / "spam"
+    spam_path.mkdir(parents=True, exist_ok=True)
+    for dir_name, tar_name, url in (("easy_ham", "ham", ham_url),
+                                    ("spam", "spam", spam_url)):
+        if not (spam_path / dir_name).is_dir():
+            path = (spam_path / tar_name).with_suffix(".tar.bz2")
+            print("Downloading", path)
+            urllib.request.urlretrieve(url, path)
+            tar_bz2_file = tarfile.open(path)
+            tar_bz2_file.extractall(path=spam_path)
+            tar_bz2_file.close()
+    return [spam_path / dir_name for dir_name in ("easy_ham", "spam")]
+```
+
+
+```python
+ham_dir, spam_dir = fetch_spam_data()
+```
+
+    Downloading datasets/spam/ham.tar.bz2
+    Downloading datasets/spam/spam.tar.bz2
+    
+
+
+```python
+# 모든 전자 메일을 load
+ham_filenames = [f for f in sorted(ham_dir.iterdir()) if len(f.name) > 20]
+spam_filenames = [f for f in sorted(spam_dir.iterdir()) if len(f.name) > 20]
+```
+
+
+```python
+len(ham_filenames)
+```
+
+
+
+
+    2500
+
+
+
+
+```python
+len(spam_filenames)
+```
+
+
+
+
+    500
+
+
+
+
+```python
+# Python의 email 모듈을 사용하여 이메일을 구문 분석 가능
+import email
+import email.policy
+
+def load_email(filepath):
+    with open(filepath, "rb") as f:
+        return email.parser.BytesParser(policy=email.policy.default).parse(f)
+```
+
+
+```python
+ham_emails = [load_email(filepath) for filepath in ham_filenames]
+spam_emails = [load_email(filepath) for filepath in spam_filenames]
+```
+
+
+```python
+# 데이터가 어떻게 표시되는지 알아보기 위해 ham의 예와 spam의 예를 확인
+print(ham_emails[1].get_content().strip())
+```
+
+    Martin A posted:
+    Tassos Papadopoulos, the Greek sculptor behind the plan, judged that the
+     limestone of Mount Kerdylio, 70 miles east of Salonika and not far from the
+     Mount Athos monastic community, was ideal for the patriotic sculpture. 
+     
+     As well as Alexander's granite features, 240 ft high and 170 ft wide, a
+     museum, a restored amphitheatre and car park for admiring crowds are
+    planned
+    ---------------------
+    So is this mountain limestone or granite?
+    If it's limestone, it'll weather pretty fast.
+    
+    ------------------------ Yahoo! Groups Sponsor ---------------------~-->
+    4 DVDs Free +s&p Join Now
+    http://us.click.yahoo.com/pt6YBB/NXiEAA/mG3HAA/7gSolB/TM
+    ---------------------------------------------------------------------~->
+    
+    To unsubscribe from this group, send an email to:
+    forteana-unsubscribe@egroups.com
+    
+     
+    
+    Your use of Yahoo! Groups is subject to http://docs.yahoo.com/info/terms/
+    
+
+
+```python
+print(spam_emails[6].get_content().strip())
+```
+
+    Help wanted.  We are a 14 year old fortune 500 company, that is
+    growing at a tremendous rate.  We are looking for individuals who
+    want to work from home.
+    
+    This is an opportunity to make an excellent income.  No experience
+    is required.  We will train you.
+    
+    So if you are looking to be employed from home with a career that has
+    vast opportunities, then go:
+    
+    http://www.basetel.com/wealthnow
+    
+    We are looking for energetic and self motivated people.  If that is you
+    than click on the link and fill out the form, and one of our
+    employement specialist will contact you.
+    
+    To be removed from our link simple go to:
+    
+    http://www.basetel.com/remove.html
+    
+    
+    4139vOLW7-758DoDY1425FRhM1-764SMFc8513fCsLl40
+    
+
+
+```python
+# 일부 전자 메일은 실제로 이미지와 첨부 파일이 있는 다중 파트
+# 우리가 가지고 있는 다양한 유형의 구조를 확인
+def get_email_structure(email):
+    if isinstance(email, str):
+        return email
+    payload = email.get_payload()
+    if isinstance(payload, list):
+        multipart = ", ".join([get_email_structure(sub_email) for sub_email in payload])
+        return f"multipart({multipart})"
+    else:
+        return email.get_content_type()
+```
+
+
+```python
+from collections import Counter
+
+def structures_counter(emails):
+    structures = Counter()
+    for email in emails:
+        structure = get_email_structure(email)
+        structures[structure] += 1
+    return structures
+```
+
+
+```python
+structures_counter(ham_emails).most_common()
+```
+
+
+
+
+    [('text/plain', 2408),
+     ('multipart(text/plain, application/pgp-signature)', 66),
+     ('multipart(text/plain, text/html)', 8),
+     ('multipart(text/plain, text/plain)', 4),
+     ('multipart(text/plain)', 3),
+     ('multipart(text/plain, application/octet-stream)', 2),
+     ('multipart(text/plain, text/enriched)', 1),
+     ('multipart(text/plain, application/ms-tnef, text/plain)', 1),
+     ('multipart(multipart(text/plain, text/plain, text/plain), application/pgp-signature)',
+      1),
+     ('multipart(text/plain, video/mng)', 1),
+     ('multipart(text/plain, multipart(text/plain))', 1),
+     ('multipart(text/plain, application/x-pkcs7-signature)', 1),
+     ('multipart(text/plain, multipart(text/plain, text/plain), text/rfc822-headers)',
+      1),
+     ('multipart(text/plain, multipart(text/plain, text/plain), multipart(multipart(text/plain, application/x-pkcs7-signature)))',
+      1),
+     ('multipart(text/plain, application/x-java-applet)', 1)]
+
+
+
+
+```python
+structures_counter(spam_emails).most_common()
+```
+
+
+
+
+    [('text/plain', 218),
+     ('text/html', 183),
+     ('multipart(text/plain, text/html)', 45),
+     ('multipart(text/html)', 20),
+     ('multipart(text/plain)', 19),
+     ('multipart(multipart(text/html))', 5),
+     ('multipart(text/plain, image/jpeg)', 3),
+     ('multipart(text/html, application/octet-stream)', 2),
+     ('multipart(text/plain, application/octet-stream)', 1),
+     ('multipart(text/html, text/plain)', 1),
+     ('multipart(multipart(text/html), application/octet-stream, image/jpeg)', 1),
+     ('multipart(multipart(text/plain, text/html), image/gif)', 1),
+     ('multipart/alternative', 1)]
+
+
+
+`Ham 메일`은 보통 **텍스트**인 반면, `Spam 메일`은 **HTML이 상당히 많다**. 
+
+게다가, `Ham 메일`은 PGP를 사용하여 서명하는 경우가 꽤 많은 것으로 보이지만, `Spam 메일`은 그렇지 않다. 간단히 말해서, 이메일 구조는 보유하기에 유용한 정보인 것 같다.
+
+
+```python
+# 전자 메일 헤더 확인
+for header, value in spam_emails[0].items():
+    print(header, ":", value)
+```
+
+    Return-Path : <12a1mailbot1@web.de>
+    Delivered-To : zzzz@localhost.spamassassin.taint.org
+    Received : from localhost (localhost [127.0.0.1])	by phobos.labs.spamassassin.taint.org (Postfix) with ESMTP id 136B943C32	for <zzzz@localhost>; Thu, 22 Aug 2002 08:17:21 -0400 (EDT)
+    Received : from mail.webnote.net [193.120.211.219]	by localhost with POP3 (fetchmail-5.9.0)	for zzzz@localhost (single-drop); Thu, 22 Aug 2002 13:17:21 +0100 (IST)
+    Received : from dd_it7 ([210.97.77.167])	by webnote.net (8.9.3/8.9.3) with ESMTP id NAA04623	for <zzzz@spamassassin.taint.org>; Thu, 22 Aug 2002 13:09:41 +0100
+    From : 12a1mailbot1@web.de
+    Received : from r-smtp.korea.com - 203.122.2.197 by dd_it7  with Microsoft SMTPSVC(5.5.1775.675.6);	 Sat, 24 Aug 2002 09:42:10 +0900
+    To : dcek1a1@netsgo.com
+    Subject : Life Insurance - Why Pay More?
+    Date : Wed, 21 Aug 2002 20:31:57 -1600
+    MIME-Version : 1.0
+    Message-ID : <0103c1042001882DD_IT7@dd_it7>
+    Content-Type : text/html; charset="iso-8859-1"
+    Content-Transfer-Encoding : quoted-printable
+    
+
+
+```python
+# 제목 머리글에만 초점을 맞추기
+spam_emails[0]["Subject"]
+```
+
+
+
+
+    'Life Insurance - Why Pay More?'
+
+
+
+
+```python
+#  교육 세트와 테스트 세트로 나누기
+import numpy as np
+from sklearn.model_selection import train_test_split
+
+X = np.array(ham_emails + spam_emails, dtype=object)
+y = np.array([0] * len(ham_emails) + [1] * len(spam_emails))
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+```
+
+**전처리 함수**를 작성한다.
+
+먼저 `HTML`을 **일반 텍스트로 변환하는 기능**이 필요하다. 
+
+이렇게 하는 가장 좋은 방법은 `BeautifulSoup 라이브러리`를 사용하는 것이지만, 이 프로젝트에 *또 다른 의존성을 추가하는 것을 피하고 싶기 때문*에 **정규 표현**을 사용하여 `솔루션을 해킹`해본다. 
+
+다음 함수는 먼저 **`<head> 섹션`을 drop**한 다음 **모든 `<a> 태그`를 하이퍼링크라는 단어로 변환**한 다음 **모든 `HTML 태그`를 제거하고 일반 텍스트만 남긴다**. 
+
+또한, 가독성을 위해 **여러 개의 새 줄을 유일한 새 줄로 교체**하고 마지막으로 **html 엔티티를 이스케이프 해제**한다.
+
+
+```python
+import re
+from html import unescape
+
+def html_to_plain_text(html):
+    text = re.sub('<head.*?>.*?</head>', '', html, flags=re.M | re.S | re.I)
+    text = re.sub('<a\s.*?>', ' HYPERLINK ', text, flags=re.M | re.S | re.I)
+    text = re.sub('<.*?>', '', text, flags=re.M | re.S)
+    text = re.sub(r'(\s*\n)+', '\n', text, flags=re.M | re.S)
+    return unescape(text)
+```
+
+
+```python
+# HTML sapm 성능 확인
+html_spam_emails = [email for email in X_train[y_train==1] if get_email_structure(email) == "text/html"]
+sample_html_spam = html_spam_emails[7]
+print(sample_html_spam.get_content().strip()[:1000], "...")
+```
+
+    <HTML><HEAD><TITLE></TITLE><META http-equiv="Content-Type" content="text/html; charset=windows-1252"><STYLE>A:link {TEX-DECORATION: none}A:active {TEXT-DECORATION: none}A:visited {TEXT-DECORATION: none}A:hover {COLOR: #0033ff; TEXT-DECORATION: underline}</STYLE><META content="MSHTML 6.00.2713.1100" name="GENERATOR"></HEAD>
+    <BODY text="#000000" vLink="#0033ff" link="#0033ff" bgColor="#CCCC99"><TABLE borderColor="#660000" cellSpacing="0" cellPadding="0" border="0" width="100%"><TR><TD bgColor="#CCCC99" valign="top" colspan="2" height="27">
+    <font size="6" face="Arial, Helvetica, sans-serif" color="#660000">
+    <b>OTC</b></font></TD></TR><TR><TD height="2" bgcolor="#6a694f">
+    <font size="5" face="Times New Roman, Times, serif" color="#FFFFFF">
+    <b>&nbsp;Newsletter</b></font></TD><TD height="2" bgcolor="#6a694f"><div align="right"><font color="#FFFFFF">
+    <b>Discover Tomorrow's Winners&nbsp;</b></font></div></TD></TR><TR><TD height="25" colspan="2" bgcolor="#CCCC99"><table width="100%" border="0"  ...
+    
+
+
+```python
+# 결과적인 일반 텍스트
+print(html_to_plain_text(sample_html_spam.get_content())[:1000], "...")
+```
+
+    
+    OTC
+     Newsletter
+    Discover Tomorrow's Winners 
+    For Immediate Release
+    Cal-Bay (Stock Symbol: CBYI)
+    Watch for analyst "Strong Buy Recommendations" and several advisory newsletters picking CBYI.  CBYI has filed to be traded on the OTCBB, share prices historically INCREASE when companies get listed on this larger trading exchange. CBYI is trading around 25 cents and should skyrocket to $2.66 - $3.25 a share in the near future.
+    Put CBYI on your watch list, acquire a position TODAY.
+    REASONS TO INVEST IN CBYI
+    A profitable company and is on track to beat ALL earnings estimates!
+    One of the FASTEST growing distributors in environmental & safety equipment instruments.
+    Excellent management team, several EXCLUSIVE contracts.  IMPRESSIVE client list including the U.S. Air Force, Anheuser-Busch, Chevron Refining and Mitsubishi Heavy Industries, GE-Energy & Environmental Research.
+    RAPIDLY GROWING INDUSTRY
+    Industry revenues exceed $900 million, estimates indicate that there could be as much as $25 billi ...
+    
+
+
+```python
+# 전자 메일 입력으로 사용하고 형식이 무엇이든 내용을 일반 텍스트로 반환하는 함수 작성
+def email_to_text(email):
+    html = None
+    for part in email.walk():
+        ctype = part.get_content_type()
+        if not ctype in ("text/plain", "text/html"):
+            continue
+        try:
+            content = part.get_content()
+        except: # in case of encoding issues
+            content = str(part.get_payload())
+        if ctype == "text/plain":
+            return content
+        else:
+            html = content
+    if html:
+        return html_to_plain_text(html)
+```
+
+
+```python
+print(email_to_text(sample_html_spam)[:100], "...")
+```
+
+    
+    OTC
+     Newsletter
+    Discover Tomorrow's Winners 
+    For Immediate Release
+    Cal-Bay (Stock Symbol: CBYI)
+    Wat ...
+    
+
+
+```python
+# `NLTK(Natural Language Toolkit)`를 사용
+import nltk
+
+stemmer = nltk.PorterStemmer()
+for word in ("Computations", "Computation", "Computing", "Computed", "Compute", "Compulsive"):
+    print(word, "=>", stemmer.stem(word))
+```
+
+    Computations => comput
+    Computation => comput
+    Computing => comput
+    Computed => comput
+    Compute => comput
+    Compulsive => compuls
+    
+
+또한 URL을 "URL"이라는 단어로 대체할 수 있는 방법이 필요한데, 이를 위해서 `Hard Core regular 식`을 사용할 수 있지만, `urlextract 라이브러리`를 사용할 것이다.
+
+
+```python
+# Colab이나 Kaggle에서 돌아가는지 확인
+import sys
+
+IS_COLAB = "google.colab" in sys.modules
+IS_KAGGLE = "kaggle_secrets" in sys.modules
+
+# 돌아간다면, urlextract 설치
+if IS_COLAB or IS_KAGGLE:
+    %pip install -q -U urlextract
+```
+
+주피터 노트북에서는 항상 `!pip` 대신 `%pip`을 사용하는데, 그 이유는 `!pip`은 라이브러리를 잘못된 환경에 설치할 수 있지만, `%pip`은 현재 실행 중인 환경 내에 설치되어 있는지 확인하기 때문이다.
+
+
+```python
+import urlextract # 루트 도메인을 다운로드하려면 인터넷 연결이 필요
+
+url_extractor = urlextract.URLExtract()
+some_text = "Will it detect github.com and https://youtu.be/7Pq-S557XQU?t=3m32s"
+print(url_extractor.find_urls(some_text))
+```
+
+    ['github.com', 'https://youtu.be/7Pq-S557XQU?t=3m32s']
+    
+
+email을 word counter로 변환하는 데 사용할 변압기에 이 모든 것을 함께 넣을 준비가 되어 있다.
+
+**단어 경계에 공백을 사용**하는 Python의 `split() 방법`을 사용하여 **문장을 단어로 분할**한다. 
+
+이는 중국어와 일본어는 일반적으로 단어 사이에 공백을 사용하지 않고, 베트남어는 음절 사이에도 공백을 사용하는 경우가 많기 때문에, 몇몇의 문자 언어에서는 효과가 없을 수 있다.
+
+
+```python
+from sklearn.base import BaseEstimator, TransformerMixin
+
+class EmailToWordCounterTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, strip_headers=True, lower_case=True,
+                 remove_punctuation=True, replace_urls=True,
+                 replace_numbers=True, stemming=True):
+        self.strip_headers = strip_headers
+        self.lower_case = lower_case
+        self.remove_punctuation = remove_punctuation
+        self.replace_urls = replace_urls
+        self.replace_numbers = replace_numbers
+        self.stemming = stemming
+    def fit(self, X, y=None):
+        return self
+    def transform(self, X, y=None):
+        X_transformed = []
+        for email in X:
+            text = email_to_text(email) or ""
+            if self.lower_case:
+                text = text.lower()
+            if self.replace_urls and url_extractor is not None:
+                urls = list(set(url_extractor.find_urls(text)))
+                urls.sort(key=lambda url: len(url), reverse=True)
+                for url in urls:
+                    text = text.replace(url, " URL ")
+            if self.replace_numbers:
+                text = re.sub(r'\d+(?:\.\d*)?(?:[eE][+-]?\d+)?', 'NUMBER', text)
+            if self.remove_punctuation:
+                text = re.sub(r'\W+', ' ', text, flags=re.M)
+            word_counts = Counter(text.split())
+            if self.stemming and stemmer is not None:
+                stemmed_word_counts = Counter()
+                for word, count in word_counts.items():
+                    stemmed_word = stemmer.stem(word)
+                    stemmed_word_counts[stemmed_word] += count
+                word_counts = stemmed_word_counts
+            X_transformed.append(word_counts)
+        return np.array(X_transformed)
+```
+
+
+```python
+# 몇 가지 이메일에 이 변압기를 사용
+X_few = X_train[:3]
+X_few_wordcounts = EmailToWordCounterTransformer().fit_transform(X_few)
+X_few_wordcounts
+```
+
+
+
+
+    array([Counter({'chuck': 1, 'murcko': 1, 'wrote': 1, 'stuff': 1, 'yawn': 1, 'r': 1}),
+           Counter({'the': 11, 'of': 9, 'and': 8, 'all': 3, 'christian': 3, 'to': 3, 'by': 3, 'jefferson': 2, 'i': 2, 'have': 2, 'superstit': 2, 'one': 2, 'on': 2, 'been': 2, 'ha': 2, 'half': 2, 'rogueri': 2, 'teach': 2, 'jesu': 2, 'some': 1, 'interest': 1, 'quot': 1, 'url': 1, 'thoma': 1, 'examin': 1, 'known': 1, 'word': 1, 'do': 1, 'not': 1, 'find': 1, 'in': 1, 'our': 1, 'particular': 1, 'redeem': 1, 'featur': 1, 'they': 1, 'are': 1, 'alik': 1, 'found': 1, 'fabl': 1, 'mytholog': 1, 'million': 1, 'innoc': 1, 'men': 1, 'women': 1, 'children': 1, 'sinc': 1, 'introduct': 1, 'burnt': 1, 'tortur': 1, 'fine': 1, 'imprison': 1, 'what': 1, 'effect': 1, 'thi': 1, 'coercion': 1, 'make': 1, 'world': 1, 'fool': 1, 'other': 1, 'hypocrit': 1, 'support': 1, 'error': 1, 'over': 1, 'earth': 1, 'six': 1, 'histor': 1, 'american': 1, 'john': 1, 'e': 1, 'remsburg': 1, 'letter': 1, 'william': 1, 'short': 1, 'again': 1, 'becom': 1, 'most': 1, 'pervert': 1, 'system': 1, 'that': 1, 'ever': 1, 'shone': 1, 'man': 1, 'absurd': 1, 'untruth': 1, 'were': 1, 'perpetr': 1, 'upon': 1, 'a': 1, 'larg': 1, 'band': 1, 'dupe': 1, 'import': 1, 'led': 1, 'paul': 1, 'first': 1, 'great': 1, 'corrupt': 1}),
+           Counter({'url': 4, 's': 3, 'group': 3, 'to': 3, 'in': 2, 'forteana': 2, 'martin': 2, 'an': 2, 'and': 2, 'we': 2, 'is': 2, 'yahoo': 2, 'unsubscrib': 2, 'y': 1, 'adamson': 1, 'wrote': 1, 'for': 1, 'altern': 1, 'rather': 1, 'more': 1, 'factual': 1, 'base': 1, 'rundown': 1, 'on': 1, 'hamza': 1, 'career': 1, 'includ': 1, 'hi': 1, 'belief': 1, 'that': 1, 'all': 1, 'non': 1, 'muslim': 1, 'yemen': 1, 'should': 1, 'be': 1, 'murder': 1, 'outright': 1, 'know': 1, 'how': 1, 'unbias': 1, 'memri': 1, 'don': 1, 't': 1, 'html': 1, 'rob': 1, 'sponsor': 1, 'number': 1, 'dvd': 1, 'free': 1, 'p': 1, 'join': 1, 'now': 1, 'from': 1, 'thi': 1, 'send': 1, 'email': 1, 'egroup': 1, 'com': 1, 'your': 1, 'use': 1, 'of': 1, 'subject': 1})],
+          dtype=object)
+
+
+
+단어 수를 가지고 있고, 그것들을 **벡터로 변환**해야 한다. 
+
+이를 위해 `fit() 방법`이 **어휘를 구축**하고 `transform() 방법`이 어휘를 사용하여 **단어 수를 벡터로 변환하는 또 다른 변압기를 구축**할 것이다. 
+
+출력은 희소 행렬이다.
+
+
+```python
+from scipy.sparse import csr_matrix
+
+class WordCounterToVectorTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, vocabulary_size=1000):
+        self.vocabulary_size = vocabulary_size
+    def fit(self, X, y=None):
+        total_count = Counter()
+        for word_count in X:
+            for word, count in word_count.items():
+                total_count[word] += min(count, 10)
+        most_common = total_count.most_common()[:self.vocabulary_size]
+        self.vocabulary_ = {word: index + 1
+                            for index, (word, count) in enumerate(most_common)}
+        return self
+    def transform(self, X, y=None):
+        rows = []
+        cols = []
+        data = []
+        for row, word_count in enumerate(X):
+            for word, count in word_count.items():
+                rows.append(row)
+                cols.append(self.vocabulary_.get(word, 0))
+                data.append(count)
+        return csr_matrix((data, (rows, cols)),
+                          shape=(len(X), self.vocabulary_size + 1))
+```
+
+
+```python
+vocab_transformer = WordCounterToVectorTransformer(vocabulary_size=10)
+X_few_vectors = vocab_transformer.fit_transform(X_few_wordcounts)
+X_few_vectors
+```
+
+
+
+
+    <3x11 sparse matrix of type '<class 'numpy.longlong'>'
+    	with 20 stored elements in Compressed Sparse Row format>
+
+
+
+
+```python
+X_few_vectors.toarray()
+```
+
+
+
+
+    array([[ 6,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+           [99, 11,  9,  8,  3,  1,  3,  1,  3,  2,  3],
+           [67,  0,  1,  2,  3,  4,  1,  2,  0,  1,  0]], dtype=int64)
+
+
+
+이 행렬은 **두 번째 줄, 첫 번째 열에 있는 99**는 두 번째 이메일이 어휘의 일부가 아닌 `99개의 단어를 포함`하고 있다는 것을 의미한다.
+
+그 옆에 있는 `11`은 **이 이메일에 어휘의 첫 번째 단어가 11번 있다는 것**을 의미한다. 
+
+그 옆에 있는 `9`는 **두 번째 단어가 9번 나온다는 뜻**이다.
+
+어떤 단어를 말하는지 어휘를 보면 알 수 있는데, 첫 번째 단어는 "the"이고, 두 번째 단어는 "of" 등이다.
+
+
+```python
+vocab_transformer.vocabulary_
+```
+
+
+
+
+    {'all': 6,
+     'and': 3,
+     'by': 10,
+     'christian': 8,
+     'in': 7,
+     'of': 2,
+     'on': 9,
+     'the': 1,
+     'to': 4,
+     'url': 5}
+
+
+
+첫 번째 스팸 분류기를 교육할 준비가 되었다.
+
+
+```python
+# 전체 데이터셋을 변환
+from sklearn.pipeline import Pipeline
+
+preprocess_pipeline = Pipeline([
+    ("email_to_wordcount", EmailToWordCounterTransformer()),
+    ("wordcount_to_vector", WordCounterToVectorTransformer()),
+])
+
+X_train_transformed = preprocess_pipeline.fit_transform(X_train)
+```
+
+
+```python
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score
+
+log_clf = LogisticRegression(max_iter=1000, random_state=42)
+score = cross_val_score(log_clf, X_train_transformed, y_train, cv=3)
+score.mean() # 98.5% 이상이 나온다 
+```
+
+
+
+
+    0.985
+
+
+
+"쉬운" 데이터 세트를 사용하고 있다는 것을 생각하면, 더 어려운 데이터셋을 사용해 봐도 결과는 놀랍지 않을 것이다. 
+
+**여러 모형을 시도**하고, **가장 적합한 모형을 선택**한 다음 **교차 검증** 등을 사용하여 **모형을 미세 조정**해야 한다.
+
+
+
+```python
+from sklearn.metrics import precision_score, recall_score
+
+X_test_transformed = preprocess_pipeline.transform(X_test)
+
+log_clf = LogisticRegression(max_iter=1000, random_state=42)
+log_clf.fit(X_train_transformed, y_train)
+
+y_pred = log_clf.predict(X_test_transformed)
+
+print(f"Precision: {precision_score(y_test, y_pred):.2%}")
+print(f"Recall: {recall_score(y_test, y_pred):.2%}")
+```
+
+    Precision: 96.88%
+    Recall: 97.89%
+    
